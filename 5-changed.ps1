@@ -5,6 +5,11 @@
 # Production Setup Script for IIS + Coralogix
 # ================================================
 
+param(
+    [string]$CxApplicationName = "windows-prod",
+    [string]$CxSubsystemName   = "MyVIP12"
+)
+
 $ErrorActionPreference = "Stop"
 $installDir = "C:\Program Files\OpenTelemetry .NET Autoinstrumentation"
 $moduleUrl  = "https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation/releases/latest/download/OpenTelemetry.DotNet.Auto.psm1"
@@ -155,8 +160,8 @@ $envVars = @{
     "OTEL_LOG_LEVEL"                 = "debug"
     "OTEL_DOTNET_AUTO_LOG_DIRECTORY" = $logDir
     
-    # Resource attributes for Coralogix
-    "OTEL_RESOURCE_ATTRIBUTES"       = "application.name=my-app,cx.application.name=my-app,cx.subsystem.name=my-subsystem"
+    # Resource attributes for Coralogix (use params to override: -CxApplicationName / -CxSubsystemName)
+    "OTEL_RESOURCE_ATTRIBUTES"       = "cx.application.name=$CxApplicationName,cx.subsystem.name=$CxSubsystemName"
     
     # Performance
     "COMPlus_gcConcurrent"           = "0"

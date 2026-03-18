@@ -94,16 +94,16 @@ receivers:
 processors:
   batch: { send_batch_max_size: 2048, send_batch_size: 1024, timeout: 1s }
   resourcedetection:
-    detectors: [system, env, ec2]
+    detectors: [system, env]
     override: false
     timeout: 2s
   resource/metadata:
     attributes:
       - action: upsert
         key: cx.otel_integration.name
-        value: coralogix-integration-OTEL-EC2-service
+        value: coralogix-integration-OTEL-IIS-service
   resourcedetection/entity:
-    detectors: [system, env, ec2, ecs]
+    detectors: [system, env]
     override: false
     timeout: 2s
     system:
@@ -128,13 +128,6 @@ processors:
       - context: resource
         statements:
           - keep_keys(attributes, [""])
-  resourcedetection/env:
-    detectors: [env, system]
-    system:
-      hostname_sources: ["os"]
-      resource_attributes:
-        host.id:
-          enabled: true
   memory_limiter:
     check_interval: 10s
     limit_percentage: 80
@@ -193,12 +186,11 @@ exporters:
     domain: "eu2.coralogix.com"
     private_key: "****************"
     application_name: "windows-prod"
-    subsystem_name: MyVIP12
-    # These configuration values can be used to dynamically set the application_name and subsystem_name
-    # application_name_attributes:
-    # - host.id
-    # subsystem_name_attributes:
-    # - host.name
+    subsystem_name: "unknown"
+    application_name_attributes:
+      - cx.application.name
+    subsystem_name_attributes:
+      - cx.subsystem.name
     timeout: 30s
   coralogix/resource_catalog:
     application_name: resource
@@ -206,22 +198,11 @@ exporters:
     private_key: "********************"
     logs:
       headers:
-        X-Coralogix-Distribution: ec2-local-integration/0.0.1
+        X-Coralogix-Distribution: iis-local-integration/0.0.1
         x-coralogix-ingress: metadata-as-otlp-logs/v1
     subsystem_name: catalog
     timeout: 30s
     
-    ######## DBG
-  file/debug:
-    format: json
-# CHANGE to a location that can be written (if need to enabled this exporter)
-    path: C:\AppLogs\debug_logs.json
-  debug:
-# Increase verbosity only in case need to see more
-    verbosity: detailed
-########
-#extensions:
-#  file_storage: { directory: /var/log/otelcol }
 
 service:
   telemetry:
@@ -238,7 +219,7 @@ service:
                 port: 8888
   pipelines:
     logs:
-      receivers: [ filelog ]
+      receivers: [ filelog, otlp ]
       processors: [ resourcedetection, batch ]
       exporters: [ coralogix ]
     metrics:
@@ -248,7 +229,7 @@ service:
     traces:
       receivers: [ otlp ]
       processors: [ memory_limiter,resource/metadata, resourcedetection, transform/spanmetrics, batch ]
-      exporters: [ spanmetrics,coralogix,debug ]
+      exporters: [ spanmetrics,coralogix ]
     logs/resource_catalog:
       exporters:
         - coralogix/resource_catalog
