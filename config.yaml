@@ -1,0 +1,260 @@
+receivers:
+  iis:
+    collection_interval: 10s
+    initial_delay: 1s
+  otlp:
+    protocols:
+      grpc: { endpoint: 0.0.0.0:4317 }
+      http: { endpoint: 0.0.0.0:4318 }
+  filelog:
+    include:
+      - 'E:\Services_Logs\RegistrationWebAPI\*.txt'
+      - 'E:\Services_Logs\AvaServer\*.txt'
+      - 'E:\Services_Logs\*.txt'
+      - 'E:\LogFiles\W3SVC*\*.log'
+    include_file_name: true
+    include_file_path: true
+    retry_on_failure:
+      enabled: true
+    start_at: end
+  hostmetrics: #collect isntance metrics
+    collection_interval: 60s
+    scrapers:
+      cpu:
+        metrics:
+          system.cpu.utilization:
+            enabled: true
+      load:
+      memory:
+        metrics:
+          system.memory.utilization:
+            enabled: true
+      disk:
+      paging:
+        metrics:
+          system.paging.utilization:
+            enabled: true
+      # processes:
+      process:
+        mute_process_name_error: true
+        mute_process_exe_error: true
+        mute_process_user_error: true
+        metrics:
+          process.cpu.utilization:
+            enabled: true
+          process.memory.utilization:
+            enabled: true
+          process.threads:
+            enabled: true
+          process.cpu.time:
+            enabled: false
+      network: null
+      filesystem:
+        metrics:
+          system.filesystem.utilization:
+            enabled: true
+        exclude_fs_types:
+          fs_types:
+            - autofs
+            - binfmt_misc
+            - bpf
+            - cgroup2
+            - configfs
+            - debugfs
+            - devpts
+            - devtmpfs
+            - fusectl
+            - hugetlbfs
+            - iso9660
+            - mqueue
+            - nsfs
+            - overlay
+            - proc
+            - procfs
+            - pstore
+            - rpc_pipefs
+            - securityfs
+            - selinuxfs
+            - squashfs
+            - sysfs
+            - tracefs
+          match_type: strict
+  prometheus: #collect the otel collector metrics
+    config:
+      scrape_configs:
+        - job_name: opentelemetry-collector
+          scrape_interval: 60s
+          static_configs:
+            - targets: ["0.0.0.0:8888"]
+        - job_name: windows-exporter
+          scrape_interval: 60s
+          static_configs:
+            - targets: ["0.0.0.0:9182"]
+
+processors:
+  batch: { send_batch_max_size: 2048, send_batch_size: 1024, timeout: 1s }
+  resourcedetection:
+    detectors: [system, env, ec2]
+    override: false
+    timeout: 2s
+  resource/metadata:
+    attributes:
+      - action: upsert
+        key: cx.otel_integration.name
+        value: coralogix-integration-OTEL-EC2-service
+  resourcedetection/entity:
+    detectors: [system, env, ec2, ecs]
+    override: false
+    timeout: 2s
+    system:
+      resource_attributes:
+        host.id: { enabled: false }
+        host.cpu.cache.l2.size: { enabled: true }
+        host.cpu.stepping: { enabled: true }
+        host.cpu.model.name: { enabled: true }
+        host.cpu.model.id: { enabled: true }
+        host.cpu.family: { enabled: true }
+        host.cpu.vendor.id: { enabled: true }
+        host.mac: { enabled: true }
+        host.ip: { enabled: true }
+        os.description: { enabled: true }
+  transform/entity-event:
+    error_mode: silent
+    log_statements:
+      - context: log
+        statements:
+          - set(attributes["otel.entity.id"]["host.id"], resource.attributes["host.id"])
+          - merge_maps(attributes, resource.attributes, "insert")
+      - context: resource
+        statements:
+          - keep_keys(attributes, [""])
+  resourcedetection/env:
+    detectors: [env, system]
+    system:
+      hostname_sources: ["os"]
+      resource_attributes:
+        host.id:
+          enabled: true
+  memory_limiter:
+    check_interval: 10s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+  transform/spanmetrics:
+    error_mode: ignore
+    trace_statements:
+    - context: span
+      statements:
+      - set(attributes["db.namespace"], attributes["db.name"]) where attributes["db.namespace"] == nil
+      - set(attributes["db.namespace"], attributes["server.address"]) where attributes["db.namespace"] == nil
+      - set(attributes["db.namespace"], attributes["network.peer.name"]) where attributes["db.namespace"] == nil
+      - set(attributes["db.namespace"], attributes["net.peer.name"]) where attributes["db.namespace"] == nil
+      - set(attributes["db.namespace"], attributes["db.system"]) where attributes["db.namespace"] == nil
+      - set(attributes["db.operation.name"], attributes["db.operation"]) where attributes["db.operation.name"] == nil
+      - set(attributes["db.collection.name"], attributes["db.sql.table"]) where attributes["db.collection.name"] == nil
+      - set(attributes["db.collection.name"], attributes["db.cassandra.table"]) where attributes["db.collection.name"] == nil
+      - set(attributes["db.collection.name"], attributes["db.mongodb.collection"]) where attributes["db.collection.name"] == nil
+      - set(attributes["db.collection.name"], attributes["db.redis.database_index"]) where attributes["db.collection.name"] == nil
+      - set(attributes["db.collection.name"], attributes["db.elasticsearch.path_parts.index"]) where attributes["db.collection.name"] == nil
+      - set(attributes["db.collection.name"], attributes["db.cosmosdb.container"]) where attributes["db.collection.name"] == nil
+      - set(attributes["db.collection.name"], attributes["aws_dynamodb.table_names"]) where attributes["db.collection.name"] == nil
+
+connectors:
+  spanmetrics:
+    dimensions:
+    - name: http.method
+    - name: cgx.transaction
+    - name: cgx.transaction.root
+    - name: status_code
+    - name: db.namespace
+    - name: db.operation.name
+    - name: db.collection.name
+    - name: db.system
+    - name: http.response.status_code
+    - name: rpc.grpc.status_code
+    - name: service.version
+    histogram:
+      explicit:
+        buckets:
+        - 1ms
+        - 4ms
+        - 10ms
+        - 20ms
+        - 50ms
+        - 100ms
+        - 200ms
+        - 500ms
+        - 1s
+        - 2s
+        - 5s
+    metrics_flush_interval: '30s'
+    namespace: ""
+exporters:
+  coralogix:
+    domain: "eu2.coralogix.com"
+    private_key: "****************"
+    application_name: "windows-prod"
+    subsystem_name: MyVIP12
+    # These configuration values can be used to dynamically set the application_name and subsystem_name
+    # application_name_attributes:
+    # - host.id
+    # subsystem_name_attributes:
+    # - host.name
+    timeout: 30s
+  coralogix/resource_catalog:
+    application_name: resource
+    domain: "eu2.coralogix.com"
+    private_key: "********************"
+    logs:
+      headers:
+        X-Coralogix-Distribution: ec2-local-integration/0.0.1
+        x-coralogix-ingress: metadata-as-otlp-logs/v1
+    subsystem_name: catalog
+    timeout: 30s
+    
+    ######## DBG
+  file/debug:
+    format: json
+# CHANGE to a location that can be written (if need to enabled this exporter)
+    path: C:\AppLogs\debug_logs.json
+  debug:
+# Increase verbosity only in case need to see more
+    verbosity: detailed
+########
+#extensions:
+#  file_storage: { directory: /var/log/otelcol }
+
+service:
+  telemetry:
+    logs:
+      encoding: json
+      level: "info"
+    metrics:
+      level: "Basic"
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+  pipelines:
+    logs:
+      receivers: [ filelog ]
+      processors: [ resourcedetection, batch ]
+      exporters: [ coralogix ]
+    metrics:
+      receivers: [ spanmetrics,hostmetrics, prometheus, iis]
+      processors: [ memory_limiter,resource/metadata,resourcedetection, batch ]
+      exporters: [ coralogix ]
+    traces:
+      receivers: [ otlp ]
+      processors: [ memory_limiter,resource/metadata, resourcedetection, transform/spanmetrics, batch ]
+      exporters: [ spanmetrics,coralogix,debug ]
+    logs/resource_catalog:
+      exporters:
+        - coralogix/resource_catalog
+      processors:
+        - resource/metadata
+        - resourcedetection/entity
+        - transform/entity-event
+      receivers:
+        - hostmetrics
