@@ -150,6 +150,49 @@ processors:
       - set(attributes["db.collection.name"], attributes["db.elasticsearch.path_parts.index"]) where attributes["db.collection.name"] == nil
       - set(attributes["db.collection.name"], attributes["db.cosmosdb.container"]) where attributes["db.collection.name"] == nil
       - set(attributes["db.collection.name"], attributes["aws_dynamodb.table_names"]) where attributes["db.collection.name"] == nil
+  transform/remove-labels:
+    error_mode: ignore
+    metric_statements:
+      - context: metric
+        conditions:
+          - IsMatch(name, "^calls$")
+          - IsMatch(name, "^duration$")
+          - IsMatch(name, "^db_calls$")
+          - IsMatch(name, "^db_duration$")
+          - IsMatch(name, "^duration_ms$")
+          - IsMatch(name, "^db.calls$")
+          - IsMatch(name, "^db.duration$")
+        statements:
+          - delete_key(resource.attributes, "cloud.platform")
+          - delete_key(resource.attributes, "container.id")
+          - delete_key(resource.attributes, "host.arch")
+          - delete_key(resource.attributes, "host.id")
+          - delete_key(resource.attributes, "host.name")
+          - delete_key(resource.attributes, "host.type")
+          - delete_key(resource.attributes, "k8s.container.name")
+          - delete_key(resource.attributes, "k8s.cronjob.name")
+          - delete_key(resource.attributes, "k8s.deployment.name")
+          - delete_key(resource.attributes, "k8s.job.name")
+          - delete_key(resource.attributes, "k8s.node.name")
+          - delete_key(resource.attributes, "k8s.pod.ip")
+          - delete_key(resource.attributes, "k8s.pod.name")
+          - delete_key(resource.attributes, "k8s.replicaset.name")
+          - delete_key(resource.attributes, "original_span_name")
+          - delete_key(resource.attributes, "os.description")
+          - delete_key(resource.attributes, "os.type")
+          - delete_key(resource.attributes, "os.version")
+          - delete_key(resource.attributes, "process.command_args")
+          - delete_key(resource.attributes, "process.command_line")
+          - delete_key(resource.attributes, "process.command")
+          - delete_key(resource.attributes, "process.executable.name")
+          - delete_key(resource.attributes, "process.executable.path")
+          - delete_key(resource.attributes, "process.owner")
+          - delete_key(resource.attributes, "process.pid")
+          - delete_key(resource.attributes, "process.runtime.description")
+          - delete_key(resource.attributes, "process.runtime.name")
+          - delete_key(resource.attributes, "process.runtime.version")
+          - delete_key(resource.attributes, "service.instance.id")
+          - delete_key(resource.attributes, "telemetry.sdk.name")
 
 connectors:
   spanmetrics:
@@ -224,7 +267,7 @@ service:
       exporters: [ coralogix ]
     metrics:
       receivers: [ spanmetrics,hostmetrics, prometheus, iis]
-      processors: [ memory_limiter,resource/metadata,resourcedetection, batch ]
+      processors: [ memory_limiter, resource/metadata, resourcedetection, transform/remove-labels, batch ]
       exporters: [ coralogix ]
     traces:
       receivers: [ otlp ]
